@@ -1,23 +1,20 @@
 import pandas as pd
-from sklearn.linear_model import LinearRegression
 import numpy as np
+from sklearn.linear_model import LinearRegression
 
-def train_model(df):
-    df["waste"] = df["prepared"] - df["consumed"]
-    df["day"] = pd.to_datetime(df["date"]).dt.dayofyear
+def predict_next(df):
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
 
-    X = df[["day"]]
-    y = df["waste"]
+    df["day_of_year"] = df["date"].dt.dayofyear
+
+    X = df[["day_of_year"]]
+    y = df["waste_kg"]
 
     model = LinearRegression()
     model.fit(X, y)
 
-    return model
-
-def predict_next(df):
-    model = train_model(df)
-
-    last_day = pd.to_datetime(df["date"]).max()
+    last_day = df["date"].max()
 
     future_days = [
         (last_day + pd.Timedelta(days=i)).dayofyear
@@ -29,4 +26,3 @@ def predict_next(df):
     )
 
     return float(np.mean(predictions))
-
