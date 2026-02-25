@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Food Wastage App</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+.glass {
+background: rgba(255,255,255,0.05);
+backdrop-filter: blur(15px);
+border: 1px solid rgba(255,255,255,0.1);
+}
+</style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white min-h-screen">
+
+<div class="max-w-7xl mx-auto p-6">
+
+<h1 class="text-4xl font-bold text-center mb-8">
+🍽 Smart Food Wastage Analytics
+</h1>
+
+<!-- FILTER -->
+<div class="glass p-6 rounded-2xl mb-8">
+<label class="text-sm block mb-2">Filter Dashboard by Date</label>
+<input type="date" id="dateFilter"
+class="px-4 py-2 bg-slate-700 rounded-lg border border-slate-600"
+onchange="updateDashboard()">
+</div>
+
+<!-- ENTRY -->
+<div class="glass p-6 rounded-2xl mb-10">
+<h2 class="text-xl font-semibold mb-4">Add Food Record</h2>
+
+<div class="grid md:grid-cols-6 gap-4">
+
+<input type="date" id="entryDate"
+class="bg-slate-700 px-3 py-2 rounded">
+
+<select id="entryMeal"
+class="bg-slate-700 px-3 py-2 rounded">
+<option>Breakfast</option>
+<option>Lunch</option>
+<option>Dinner</option>
+</select>
+
+<input type="text" id="entryItem"
+placeholder="Food Item"
+class="bg-slate-700 px-3 py-2 rounded">
+
+<input type="number" id="entryPrepared"
+placeholder="Prepared"
+class="bg-slate-700 px-3 py-2 rounded">
+
+<input type="number" id="entryConsumed"
+placeholder="Consumed"
+class="bg-slate-700 px-3 py-2 rounded">
+
+<select id="entryUnit"
+class="bg-slate-700 px-3 py-2 rounded">
+<option value="kg">kg</option>
+<option value="liters">liters</option>
+<option value="pieces">pieces</option>
+</select>
+
+</div>
+
+<button onclick="addRecord()"
+class="mt-4 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg">
+Add Record
+</button>
+</div>
+
+<!-- KPI CARDS -->
+<div id="unitCards" class="grid md:grid-cols-3 gap-6 mb-10"></div>
+
+<!-- CHARTS -->
+<div class="grid md:grid-cols-2 gap-8 mb-10">
+
+<div class="glass p-6 rounded-2xl">
+<h3 class="mb-4">Prepared vs Consumed</h3>
+<canvas id="trendChart"></canvas>
+</div>
+
+<div class="glass p-6 rounded-2xl">
+<h3 class="mb-4">Monthly Wastage</h3>
+<canvas id="monthlyChart"></canvas>
+</div>
+
+</div>
+
+<!-- PREDICTIONS -->
+<div class="glass p-6 rounded-2xl">
+<h3 class="mb-6 text-xl">Food Preference Prediction</h3>
+<div id="predictionContainer" class="grid md:grid-cols-2 gap-6"></div>
+</div>
+
+</div>
+
+<script>
+
+let records = JSON.parse(localStorage.getItem("foodProData")) || [];
+let trendChart, monthlyChart;
+
+function saveData(){
+localStorage.setItem("foodProData", JSON.stringify(records));
+}
+
+function addRecord(){
+
+const date = entryDate.value;
+const meal = entryMeal.value;
+const item = entryItem.value;
+const prepared = parseFloat(entryPrepared.value);
+const consumed = parseFloat(entryConsumed.value);
+const unit = entryUnit.value;
+
+if(!date || !item || !prepared || !consumed){
+alert("Fill all fields");
+return;
+}
+
+records.push({id:Date.now(),date,meal,item,prepared,consumed,unit});
+saveData();
+updateDashboard();
+}
+
+function updateDashboard(){
+
+let filtered = records;
+const selectedDate = dateFilter.value;
+if(selectedDate){
+filtered = records.filter(r=>r.date===selectedDate);
+}
+
+updateUnitCards(filtered);
+updateCharts(filtered);
+updateMonthlyChart();
+updatePredictions(filtered);
+}
+
+function updateUnitCards(data){
+
+const units = {};
+data.forEach(r=>{
+if(!units[r.unit]) units[r.unit]={prepared:0,consumed:0};
+units[r.unit].prepared+=r.prepared;
+units[r.unit].consumed+=r.consumed;
+});
+
+let html="";
+Object.keys(units).forEach(unit=>{
+const p=units[unit].prepared;
+const c=units[unit].consumed;
+const w=p-c;
+const rate=p>0?((w/p)*100).toFixed(1):0;
+
+html+=`
+<div class="glass p-6 rounded-xl text-center">
+<h3 class="text-lg mb-2">${unit.toUpperCase()}</h3>
+<p>Prepared: ${p}</p>
+<p>Consumed: ${c}</p>
+<p class="text-red-400">Wastage: ${w}</p>
+<p class="text-orange-400">Wastage %: ${rate}%</p>
+</div>`;
+});
+
+document.getElementById("unitCards").innerHTML = html;
+}
+
+function updateCharts(data){
+
+const grouped={};
+data.forEach(r=>{
+if(!grouped[r.date]) grouped[r.date]={prepared:0,consumed:0};
+grouped[r.date].prepared+=r.prepared;
+grouped[r.date].consumed+=r.consumed;
+});
+
+const labels=Object.keys(grouped);
+const preparedData=labels.map(d=>grouped[d].prepared);
+const consumedData=labels.map(d=>grouped[d].consumed);
+
+if(trendChart) trendChart.destroy();
+
+trendChart=new Chart(document.getElementById("trendChart"),{
+type:"line",
+data:{
+labels,
+datasets:[
+{label:"Prepared",data:preparedData,borderColor:"#3b82f6"},
+{label:"Consumed",data:consumedData,borderColor:"#10b981"}
+]
+}
+});
+}
+
+function updateMonthlyChart(){
+
+const monthly={};
+
+records.forEach(r=>{
+const m=r.date.substring(0,7);
+if(!monthly[m]) monthly[m]={prepared:0,consumed:0};
+monthly[m].prepared+=r.prepared;
+monthly[m].consumed+=r.consumed;
+});
+
+const labels=Object.keys(monthly);
+const wastage=labels.map(m=>monthly[m].prepared-monthly[m].consumed);
+
+if(monthlyChart) monthlyChart.destroy();
+
+monthlyChart=new Chart(document.getElementById("monthlyChart"),{
+type:"bar",
+data:{
+labels,
+datasets:[{
+label:"Monthly Wastage",
+data:wastage,
+backgroundColor:"#ef4444"
+}]
+}
+});
+}
+
+function updatePredictions(data){
+
+const container=document.getElementById("predictionContainer");
+container.innerHTML="";
+
+const stats={};
+
+data.forEach(r=>{
+const key=r.item+" - "+r.meal;
+if(!stats[key]) stats[key]={prepared:0,consumed:0};
+stats[key].prepared+=r.prepared;
+stats[key].consumed+=r.consumed;
+});
+
+Object.keys(stats).forEach(k=>{
+const p=stats[k].prepared;
+const c=stats[k].consumed;
+const percent=((c/p)*100).toFixed(1);
+
+let label="Low Preference";
+if(percent>=90) label="Highly Preferred";
+else if(percent>=75) label="Moderate";
+
+container.innerHTML+=`
+<div class="glass p-4 rounded-xl">
+<h4 class="font-semibold">${k}</h4>
+<p>Preference: ${percent}%</p>
+<p class="text-blue-400">${label}</p>
+</div>`;
+});
+}
+
+updateDashboard();
+
+</script>
+
+</body>
+</html>
