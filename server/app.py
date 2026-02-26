@@ -1,49 +1,103 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
-import numpy as np
-from model import predict_next
+import sqlite3
+import os
 
 app = Flask(__name__)
+
+# ✅ Enable CORS for frontend connection
 CORS(app)
 
-# ✅ ROOT ROUTE (Fixes 404 error)
+# Database file
+DATABASE = "food.db"
+
+
+# ---------------------------
+# Create Database Table
+# ---------------------------
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS food_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            food_item TEXT,
+            meal_type TEXT,
+            prepared_quantity REAL,
+            consumed_quantity REAL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+# ---------------------------
+# Root Route (Health Check)
+# ---------------------------
 @app.route("/")
 def home():
     return jsonify({
-        "status": "success",
-        "message": "Smart Food Waste Backend is Running 🚀"
+        "message": "Smart Food Waste Backend is Running 🚀",
+        "status": "success"
     })
 
 
-# ✅ PREDICTION ROUTE
-@app.route("/predict", methods=["POST"])
-def predict():
+# ---------------------------
+# Add Food Data Route
+# ---------------------------
+@app.route("/add", methods=["POST"])
+def add_food():
     try:
-        data = request.get_json()
+        data = request.json
 
-        if not data:
-            return jsonify({"error": "No data received"}), 400
+        date = data.get("date")
+        food_item = data.get("food_item")
+        meal_type = data.get("meal_type")
+        prepared_quantity = data.get("prepared_quantity")
+        consumed_quantity = data.get("consumed_quantity")
 
-        df = pd.DataFrame(data)
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
 
-        # Ensure date column exists
-        if "date" not in df.columns:
-            return jsonify({"error": "Date column missing"}), 400
+        cursor.execute("""
+            INSERT INTO food_data 
+            (date, food_item, meal_type, prepared_quantity, consumed_quantity)
+            VALUES (?, ?, ?, ?, ?)
+        """, (date, food_item, meal_type, prepared_quantity, consumed_quantity))
 
-        prediction = predict_next(df)
+        conn.commit()
+        conn.close()
 
-        return jsonify({
-            "status": "success",
-            "predicted_waste_next_week": round(prediction, 2)
-        })
+        return jsonify({"message": "Data saved successfully!"})
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ---------------------------
+# Get All Data Route
+# ---------------------------
+@app.route("/data", methods=["GET"])
+def get_data():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM food_data")
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    return jsonify(rows)
+
+
+# ---------------------------
+# Run App
+# ---------------------------
 if __name__ == "__main__":
     app.run(debug=True)
